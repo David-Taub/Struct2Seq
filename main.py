@@ -1,13 +1,7 @@
-# tensorboard --logdir=cbioDavid projects/Struct2Seq/dqn/summary
-
-# Progs/ython/python cbioDavid/projects/Struct2Seq/reinfLearn.py
-
-# tensorboard --logdir=C:\Users\booga\Dropbox\projects\Struct2Seq\dqn\summary
 
 # rmdir /S /Q C:\Users\booga\Dropbox\projects\Struct2Seq\dqn
 # del /F C:\Users\booga\Dropbox\projects\Struct2Seq\shape.pickle
-
-# rmdir /S /Q C:\Users\booga\Dropbox\projects\Struct2Seq\dqn & python C:\Users\booga\Dropbox\projects\Struct2Seq\reinfLearn.py
+# python C:\Users\booga\Dropbox\projects\Struct2Seq\main.py
 import logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s %(relativeCreated)6d %(threadName)s %(message)s')
 import numpy as np
