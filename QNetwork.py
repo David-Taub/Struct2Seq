@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 import os
 
+ALPHABET_SIZE = 4
 STATE_LAYER_1_FACTOR = 2
 STATE_LAYER_2_FACTOR = 1
 GENERAL_STATE_LAYER_1_FACTOR = 1
@@ -10,20 +11,16 @@ ACTION_LAYER_1_FACTOR = 2
 ACTION_LAYER_2_FACTOR = 1
 MERGED_LAYER_FATOR_1 = 1.1
 MERGED_LAYER_FATOR_2 = 1.1
-ACTION_VALUES = [-1, 0, 1]
 
 
 class QNetwork(object):
-    def __init__(self, state_sizes, action_size):
+    def __init__(self, sequence_length):
         print('Building Q network')
         self.total_value = 0
         self.LEARNING_RATE = 0.00001
         self.BETA_W = 10 ** -3
         self.weights = []
-        self.action_size = action_size
-        self.general_state_size = state_sizes[0]
-        self.num_of_legs = state_sizes[1]
-        self.leg_state_size = state_sizes[2]
+        self.sequence_length = sequence_length
 
         self._init_inputs()
         self._init_legs_layers()
@@ -79,7 +76,7 @@ class QNetwork(object):
         for i in range(policy.shape[1]):
             action.append(np.random.choice(ACTION_VALUES, 1, p=policy[0,i,:])[0])
             print(policy[0,i,:], action)
-        # [aa, qq] = sess.run([self.output_action, self.policy], feed_dict=feed_dict)
+            # [aa, qq] = sess.run([self.output_action, self.policy], feed_dict=feed_dict)
         return action
 
     def get_value(self, states, sess):
@@ -105,10 +102,13 @@ class QNetwork(object):
         return feed_dict
 
     def _init_inputs(self):
-        self.action_input = tf.placeholder(shape=[None, self.action_size], dtype=tf.int8, name="action_input")
+        seq1hot_shape = [None, ALPHABET_SIZE, self.sequence_length]
+        Emat_shape = [None, self.sequence_length]
+        with tf.name_scope('input_action'):
+            self.action_input = tf.placeholder(shape=[None, ALPHABET_SIZE, self.sequence_length], dtype=tf.int8, name="action_input")
         with tf.name_scope('input_state'):
-            shape = [None, self.general_state_size]
-            self.general_state_input = tf.placeholder(shape=shape, dtype=tf.float32, name="input_general_state")
+            self.state_input_seq1hot = tf.placeholder(shape=seq1hot_shape, dtype=tf.float32, name="input_state_seq1hot")
+            self.state_input_Ediff = tf.placeholder(shape=Emat_shape, dtype=tf.float32, name="input_state_Ediff")
             self.legs_states_input = []
             shape = [None, self.leg_state_size]
             for i in range(self.num_of_legs):
