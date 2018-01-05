@@ -102,17 +102,17 @@ class QNetwork(object):
         return feed_dict
 
     def _init_inputs(self):
+        # ? x SIG x L
         seq1hot_shape = [None, ALPHABET_SIZE, self.sequence_length]
-        Emat_shape = [None, self.sequence_length]
+        # ? x L x L
+        eng_mat_shape = [None, self.sequence_length, self.sequence_length]
+        seq_eng_mat_shape = [None, self.sequence_length, self.sequence_length, (ALPHABET_SIZE ** 2) + 1]
         with tf.name_scope('input_action'):
-            self.action_input = tf.placeholder(shape=[None, ALPHABET_SIZE, self.sequence_length], dtype=tf.int8, name="action_input")
+            self.action_input = tf.placeholder(shape=seq1hot_shape, dtype=tf.int8, name="action_input")
         with tf.name_scope('input_state'):
-            self.state_input_seq1hot = tf.placeholder(shape=seq1hot_shape, dtype=tf.float32, name="input_state_seq1hot")
-            self.state_input_Ediff = tf.placeholder(shape=Emat_shape, dtype=tf.float32, name="input_state_Ediff")
-            self.legs_states_input = []
-            shape = [None, self.leg_state_size]
-            for i in range(self.num_of_legs):
-                self.legs_states_input.append(tf.placeholder(shape=shape, dtype=tf.float32, name="input_general_state"))
+            # self.state_input_seq1hot = tf.placeholder(shape=seq1hot_shape, dtype=tf.float32, name="input_state_seq1hot")
+            # self.state_input_Ediff = tf.placeholder(shape=eng_mat_shape, dtype=tf.float32, name="input_state_Ediff")
+            self.state_input = tf.placeholder(shape=seq_eng_mat_shape, dtype=tf.float32, name="input_state")
 
     def _init_merge_and_q(self):
 
