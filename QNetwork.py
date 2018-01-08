@@ -4,9 +4,14 @@ import numpy as np
 import os
 
 ALPHABET_SIZE = 4
-STATE_LAYER_1_FACTOR = 2
-STATE_LAYER_2_FACTOR = 1
-GENERAL_STATE_LAYER_1_FACTOR = 1
+CONV_1_KERNEL = 3
+CONV_1_DEPTH = 20
+CONV_2_KERNEL = 3
+CONV_2_DEPTH = 50
+AFFINE_1_WIDTH = 100
+AFFINE_2_WIDTH = 50
+
+A = 1
 ACTION_LAYER_1_FACTOR = 2
 ACTION_LAYER_2_FACTOR = 1
 MERGED_LAYER_FATOR_1 = 1.1
@@ -21,12 +26,14 @@ class QNetwork(object):
         self.BETA_W = 10 ** -3
         self.weights = []
         self.sequence_length = sequence_length
-
+        # ? x SIG x L
+        self.seq1hot_shape = [None, ALPHABET_SIZE, self.sequence_length]
+        # ? x L x L
+        self.seq_eng_mat_shape = [None, self.sequence_length, self.sequence_length, (ALPHABET_SIZE ** 2) + 1]
         self._init_inputs()
-        self._init_conv_layer2()
         # self._init_action_layers()
         self._init_general_state_layer()
-        self._init_merge_and_q()
+        self._init_hidden_layers()
         self._init_outputs()
 
     def _init_outputs(self):
@@ -92,33 +99,23 @@ class QNetwork(object):
 
 
     def _init_inputs(self):
-        # ? x SIG x L
-        seq1hot_shape = [None, ALPHABET_SIZE, self.sequence_length]
-        # ? x L x L
-        eng_mat_shape = [None, self.sequence_length, self.sequence_length]
-        seq_eng_mat_shape = [None, self.sequence_length, self.sequence_length, (ALPHABET_SIZE ** 2) + 1]
         with tf.name_scope('input_action'):
-            self.action_input = tf.placeholder(shape=seq1hot_shape, dtype=tf.int8, name="action_input")
+            self.action_input = tf.placeholder(shape=self.seq1hot_shape, dtype=tf.int8, name="action_input")
         with tf.name_scope('input_state'):
-            # self.state_input_seq1hot = tf.placeholder(shape=seq1hot_shape, dtype=tf.float32, name="input_state_seq1hot")
-            # self.state_input_Ediff = tf.placeholder(shape=eng_mat_shape, dtype=tf.float32, name="input_state_Ediff")
-            self.state_input = tf.placeholder(shape=seq_eng_mat_shape, dtype=tf.float32, name="input_state")
+            self.state_input = tf.placeholder(shape=self.seq_eng_mat_shape, dtype=tf.float32, name="input_state")
 
-    def _init_merge_and_q(self):
+    def _init_hidden_layers(self):
+        self.conv1 = self._gen_conv2d_layer(self.state_input, CONV_1_DEPTH, CONV_1_KERNEL, "Conv 1")
+        self.conv2 = self._gen_conv2d_layer(self.conv1, CONV_2_DEPTH, CONV_2_KERNEL, "Conv 2")
+        # conv2_flat_size = np.prod(tf.shape(self.conv2)[1:])
+        # conv2_flat = tf.reshape(self.conv2, [-1, conv2_flat_size])
+        conv2_flat = tf.contrib.layers.flatten(self.conv2)
+        self.affine1 = self._gen_affine_layer(self.conv2_flat, AFFINE_1_WIDTH, "Affine 1")
+        self.affine2 = self._gen_affine_layer(self.affine1, AFFINE_2_WIDTH, "Affine 2")
 
-        with tf.name_scope('merged_1'):
-            to_merge = self.leg_hiddens2 + [self.general_state_hidden1]
-            # to_merge = [self.action_hidden1] + self.leg_hiddens2 + [self.general_state_hidden1]
-            merged = tf.concat(to_merge, axis=1, name="merged")
-            self._variable_summaries(merged, 'merged')
-            in_size = merged.get_shape()[1].value
-            out_size = round(in_size * MERGED_LAYER_FATOR_1)
-            mixed1 = self._gen_affine_layer(merged, in_size, out_size, 'affine1')
-            in_size = out_size
-            out_size = round(in_size * MERGED_LAYER_FATOR_2)
-            mixed2 = self._gen_affine_layer(mixed1, in_size, out_size, 'affine2')
-        in_size = out_size
-        policy_flat = self._gen_affine_layer(mixed2, in_size, self.action_size * len(ACTION_VALUES), 'policy', False)
+    def _init_out_layer(self):
+        policy_flat = self._gen_affine_layer(self.affine2, self.sequence_length*ALPHABET_SIZE, "policy_flat", false)
+        ###############
         policy_raw = tf.reshape(policy_flat, [-1, self.action_size, len(ACTION_VALUES)])
         self.policy = tf.nn.softmax(policy_raw, dim=2, name='policy_softmax')
         shifted_actions = self.action_input + tf.constant(1, dtype=tf.int8)
@@ -145,38 +142,26 @@ class QNetwork(object):
             tf.summary.scalar('min', tf.reduce_min(var))
             tf.summary.histogram('histogram', var)
 
-    def _gen_affine_layer_from_vars(self, input_layer, weights, biases, layer_name, use_relu=True):
-        with tf.name_scope(layer_name):
-            print('Layer: %s (%d -> %d)' % (layer_name, weights.get_shape()[0], weights.get_shape()[1]))
-            out = tf.matmul(input_layer, weights) + biases
-            tf.summary.histogram('pre_activations', out)
-            if use_relu:
-                out = tf.nn.relu(out)
-                tf.summary.histogram('post_activations', out)
-        return out
-
-    def _gen_affine_layer(self, input_layer, in_size, out_size, layer_name, use_relu=True):
-        with tf.name_scope(layer_name):
-            # xavier_init = tf.contrib.layers.xavier_initializer()
-            # weights = tf.Variable(xavier_init([in_size, out_size]), name='weights')
-            # biases = tf.Variable(xavier_init([out_size]), name='biases')
-
-            weight_inititals = tf.truncated_normal(shape=[in_size, out_size], stddev=0.1)
-            weights = tf.Variable(weight_inititals, name='weights')
-            self._variable_summaries(weights, 'weights')
-            bias_inititals = tf.truncated_normal(shape=[out_size], stddev=0.1)
-            biases = tf.Variable(bias_inititals, name='biases')
-            self._variable_summaries(biases, 'biases')
-            self.weights.append(weights)
-        return self._gen_affine_layer_from_vars(input_layer, weights, biases, layer_name, use_relu)
+    def _gen_affine_layer(self, input_layer, out_size, layer_name, use_relu=True):
+        activation = tf.nn.relu if use_relu else None
+        layer = tf.layers.dense(features, out_size, activation=activation, name=layer_name)
+        layer_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
+        self._variable_summaries(layer_vars[0], 'weights')
+        self._variable_summaries(layer_vars[1], 'bias')
+        self._variable_summaries(layer, 'act')
+        return layer
 
     def _gen_conv2d_layer(self, input_layer, depth, kernel_size, layer_name):
         # TODO: diagonal mask? this will reduce parameters might speed up the learning
         # TODO: should check is kernels are usually diagonally dominant
-        with tf.name_scope(layer_name):
-            conv2d_layer = tf.layers.conv2d(inputs=input_layer,
-                                    filters=depth,
-                                    kernel_size=[kernel_size, kernel_size],
-                                    padding="same",
-                                    activation=tf.nn.relu)
-        return conv2d_layer
+        layer = tf.layers.conv2d(inputs=input_layer,
+                                filters=depth,
+                                kernel_size=[kernel_size, kernel_size],
+                                padding="same",
+                                activation=tf.nn.relu,
+                                name=layer_name)
+        layer_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
+        self._variable_summaries(layer_vars[0], 'kernels')
+        self._variable_summaries(layer_vars[1], 'bias')
+        self._variable_summaries(layer, 'act')
+        return layer
