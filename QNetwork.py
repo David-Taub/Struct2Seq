@@ -29,6 +29,7 @@ class QNetwork(object):
         self._init_hidden_layers()
         self._init_output_layer()
         self._init_loss()
+        self._init_trainer()
 
     def _init_loss(self):
         self.action_onehot = tf.one_hot(self.action_input, self.sequence_length*ALPHABET_SIZE, dtype=tf.float32)
@@ -37,10 +38,10 @@ class QNetwork(object):
         # self.indexes = tf.range(0, tf.shape(self.policy)[0]) * tf.shape(self.policy)[1] + self.action_input
         # self.responsible_outputs = tf.gather(tf.reshape(self.output, [-1]), self.indexes)
 
-        rewards_plus = np.asarray(self.reward.tolist() + [self.BOOTSTRAP_VALUE])
+        rewards_plus = np.asarray(self.reward_input.tolist() + [self.BOOTSTRAP_VALUE])
         self.discounted_rewards = discout(rewards_plus, self.DISCOUNT_RATE)[:-1]
         self.values_plus = np.asarray(self.values.tolist() + [self.BOOTSTRAP_VALUE])
-        marginal_advantages = self.reward + self.DISCOUNT_RATE * self.values_plus[1:] - self.values_plus[:-1]
+        marginal_advantages = self.reward_input + self.DISCOUNT_RATE * self.values_plus[1:] - self.values_plus[:-1]
         self.advantages = discount(marginal_advantages, self.DISCOUNT_RATE)
 
         # self.policy_loss = -tf.reduce_mean(tf.log(self.responsible_outputs)*self.discounted_rewards)
@@ -52,19 +53,20 @@ class QNetwork(object):
             self.loss = self.VALUE_LOSS_FACTOR * self.value_loss +
                         self.POLICY_LOSS_FACTOR * self.policy_loss -
                         self.ENTROPY_LOSS_FACTOR * self.entropy
-    def _init_trainger(self):
-        trainer = tf.train.GradientDescentOptimizer(learning_rate=self.LEARNING_RATE)
+
+    def _init_trainer(self):
+        trainer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE)
         self.updateModel = trainer.minimize(self.loss)
 
     def _init_summaries(self):
-            tf.summary.histogram('total_loss', self.loss)
-            tf.summary.histogram('value_loss', self.value_loss)
-            tf.summary.histogram('policy_loss', self.policy_loss)
-            tf.summary.histogram('entropy', self.entropy)
-            tf.summary.histogram('advantages', self.advantages)
-            tf.summary.histogram('discounted_rewards', self.discounted_rewards)
-            tf.summary.histogram('policy', self.policy)
-            tf.summary.histogram('value', self.value)
+        tf.summary.histogram('total_loss', self.loss)
+        tf.summary.histogram('value_loss', self.value_loss)
+        tf.summary.histogram('policy_loss', self.policy_loss)
+        tf.summary.histogram('entropy', self.entropy)
+        tf.summary.histogram('advantages', self.advantages)
+        tf.summary.histogram('discounted_rewards', self.discounted_rewards)
+        tf.summary.histogram('policy', self.policy)
+        tf.summary.histogram('value', self.value)
 
 
     def _init_output_layer(self):
@@ -82,27 +84,17 @@ class QNetwork(object):
 
 
     def train(self, rewards, states, actions, sess):
-        feed_dict = {}
-        feed_dict[self.state_input] = states
-        feed_dict[self.action_input] = actions
-        feed_dict[self.rewards_plus] = rewards
-        sess.run(self.update_model,actions=feed_dict)
-        return feed_dict
-
-    def get_regularizer(self, sess):
-        return sess.run(self.regularizers)
+        feed_dict = {self.state_input: states,
+                     self.action_input: actions,
+                     self.reward_input: rewards}
+        sess.run(self.update_model, feed_dict=feed_dict)
 
     # get state, predict action by simple per-dimension ascent
     # states - batch_size x state_size
     # actions - batch_size x state_size
     def predict(self, state, sess):
-        feed_dict = self.states_to_feed_dict(state)
-        policy = sess.run(self.policy, feed_dict=feed_dict)
-        action = []
-        for i in range(policy.shape[1]):
-            action.append(np.random.choice(ACTION_VALUES, 1, p=policy[0,i,:])[0])
-            print(policy[0,i,:], action)
-            # [aa, qq] = sess.run([self.output_action, self.policy], feed_dict=feed_dict)
+        feed_dict = {self.state_input: state}
+        action = sess.run(self.chosen_action, feed_dict=feed_dict)
         return action
 
     def get_value(self, states, sess):

@@ -6,16 +6,16 @@ class Game(object):
         self.sequence_length = sequence_length
         self.ALPHABET_SIZE = 4
         # todo: read target from file? how should it be generated?
-        self.eng_target = self._get_energy_rand()
+        self.eng_target = self._get_energy()
+        self.DONE_THRESHOLD = 0.01 / (self.sequence_length * self.sequence_length)
 
     def reset(self):
         self.sequence = np.random.choice(self.ALPHABET_SIZE, self.sequence_length)
         return self.get_state()
 
     def get_state(self):
-        eng = self.eng_target - self._get_energy_rand()
         cross_onehot = self._gen_cross_onehot()
-        state = np.concatenate((eng, cross_onehot), 2)
+        state = np.concatenate((self._get_energy_diff(), cross_onehot), 2)
         mask = np.triu(np.ones(self.sequence_length), 1)
         mask = np.matlib.repmat(mask, 2, self.ALPHABET_SIZE * self.ALPHABET_SIZE + 1)
         state *= mask
@@ -27,13 +27,21 @@ class Game(object):
         cross = a * self.ALPHABET_SIZE + b
         return onehot_mat(cross, self.ALPHABET_SIZE * self.ALPHABET_SIZE)
 
-    def _get_energy_rand(self):
+    def _get_energy(self):
         # todo: replace with Yann's code
         return np.random.rand(self.sequence_length, self.sequence_length)
 
+    def _get_energy_diff(self):
+        return self.eng_target - self._get_energy()
+
     def step(self, action):
+        pre_eng_diff = self._get_energy_diff()
         self.sequence[np.floor(action / self.ALPHABET_SIZE)] = action % self.ALPHABET_SIZE
-        return self.get_state()
+        post_eng_diff = self._get_energy_diff()
+        reward = np.norm(pre_eng_diff) - np.norm(post_eng_diff)
+        next_state = self.get_state()
+        is_finished = np.norm(post_eng_diff) < self.DONE_THRESHOLD
+        return next_state, reward, is_finished
 
 
 # out - |A|_1 x |A|_2 x n
